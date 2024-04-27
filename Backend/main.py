@@ -4,6 +4,14 @@ from io import BytesIO
 import os
 import json
 
+
+ALLOWED_EXTENSIONS = {"mp4", "avi"}
+
+def allowed(filename:str):
+    return "." in filename and filename.rsplit(".", 1)[1].lower()
+
+    
+
 def frame_extraction(file):
     try:
         print(type(file))
@@ -15,7 +23,11 @@ def frame_extraction(file):
 app = FastAPI()
 @app.post("/upload/")
 async def upload_file_and_json(file: UploadFile = File(...), info: str = Form(...)):
+    if not allowed(file.filename):
+        raise HTTPException(status_code=400, detail="File extension not allowed")
     # Read the JSON data
+
+    
     json_data = json.loads(info)
     
     # Process the uploaded file
