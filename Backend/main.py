@@ -5,25 +5,7 @@ import os
 import json
 import ffmpeg
 
-<<<<<<< HEAD
 import asyncio
-=======
-
-ALLOWED_EXTENSIONS = {"mp4", "avi"}
-
-def allowed(filename:str):
-    return "." in filename and filename.rsplit(".", 1)[1].lower()
-
-    
-
-def frame_extraction(file):
-    try:
-        print(type(file))
-        # print("Ts")
-    except Exception as e:
-        print(e)
-    pass
->>>>>>> f5ae20d490445d035a27594c39ef00c4694542b3
 
 # test section
 
@@ -55,22 +37,13 @@ async def extract_frames(file_content) -> bytes:
 # , info: str = Form(...)
 app = FastAPI()
 @app.post("/upload/")
-<<<<<<< HEAD
 async def upload_file_and_json(file: UploadFile = File(...)):
-=======
-async def upload_file_and_json(file: UploadFile = File(...), info: str = Form(...)):
->>>>>>> f5ae20d490445d035a27594c39ef00c4694542b3
     if not allowed(file.filename):
         raise HTTPException(status_code=400, detail="File extension not allowed")
     # Read the JSON data
 
-<<<<<<< HEAD
 
     # json_data = json.loads(info)
-=======
-    
-    json_data = json.loads(info)
->>>>>>> f5ae20d490445d035a27594c39ef00c4694542b3
     
     # Process the uploaded file
     file_content = await file.read()
