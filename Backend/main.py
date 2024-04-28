@@ -1,25 +1,37 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
-from io import BytesIO
-import os
-import json
-import ffmpeg
+from mtcnn import MTCNN
+
+from tempfile import NamedTemporaryFile
 
 import asyncio
 
 # test section
 
-from asynccpu import ProcessTaskPoolExecutor
-from asyncffmpeg import FFmpegCoroutineFactory, StreamSpec
+from moviepy.editor import VideoFileClip
 
 ALLOWED_EXTENSIONS = {"mp4", "avi"}
 
 def allowed(filename:str):
     return "." in filename and filename.rsplit(".", 1)[1].lower()
 
-def extract_frames(file):
+async def extract_frames(file_content: bytes):
     
-    pass
+    with NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
+        temp_file.write(file_content)
+        temp_file_path = temp_file.name
+
+
+    clip = VideoFileClip(temp_file_path)
+    frames = []
+    for frame in clip.iter_frames(fps=1):
+        frames.append(frame)
+    clip.close()
+    detector = MTCNN()
+    detector.detect_faces()
+    return 1
+
+
 
 # , info: str = Form(...)
 app = FastAPI()
@@ -44,4 +56,4 @@ async def upload_file_and_json(file: UploadFile = File(...)):
     
     # You can also return a response or perform any other actions
     
-    return {"file_uploaded": file.filename, "Type": type(extract_frames)}
+    return {"file_uploaded": file.filename}
