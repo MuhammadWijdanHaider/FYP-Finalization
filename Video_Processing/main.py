@@ -27,7 +27,7 @@ def extract_frames_rd(path, output, intervals = 1):
             frames.append(frame)
             # do some checks to make sure that the face is in good condition, (later)
             f = detector.detect_faces(frame)
-            pprint.pprint(len(f))
+            # pprint.pprint(len(f))
             if len(f) > len(m_face_d["face_data"]):
                 m_face_d["face_data"] = f
                 m_face_d["frame"] = frame
@@ -35,6 +35,7 @@ def extract_frames_rd(path, output, intervals = 1):
 
         clip.close()
         imageio.imwrite("extracted_frame.png", m_face_d["frame"])
+        print(type(m_face_d["frame"]))
     except Exception as e:
         print(e)
 

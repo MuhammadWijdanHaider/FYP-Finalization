@@ -44,6 +44,9 @@ async def extract_frames(file_content: bytes):
          face_data = m_face_d["face_data"]
          if not(face_data['confidence'] < 0.9):
               x, y, w, h = face_data['box']
+              x, y, w, h = max(x, 0), max(y, 0), max(w, 0), max(h, 0)
+              cropped_face = m_face_d["frame"][y:y+h, x:x+w]
+              
               pass
          else:
               raise ValueError("Face confidence is below 0.9")
