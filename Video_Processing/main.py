@@ -15,6 +15,31 @@ def frames_extraction(st_time, en_time, file, intervals=1):
         print(e)
     pass
 
+def extract_frames_rd(path, output, intervals = 1):
+    frames = []
+    detector = MTCNN()    
+    m_face = []
+    m_face_d = {"face_data": []}
+    ff = 0
+    try:
+        clip = VideoFileClip(path)
+        for frame in clip.iter_frames(fps=2):
+            frames.append(frame)
+            # do some checks to make sure that the face is in good condition, (later)
+            f = detector.detect_faces(frame)
+            pprint.pprint(len(f))
+            if len(f) > len(m_face_d["face_data"]):
+                m_face_d["face_data"] = f
+                m_face_d["frame"] = frame
+                # for the sake of testing
+
+        clip.close()
+        imageio.imwrite("extracted_frame.png", m_face_d["frame"])
+    except Exception as e:
+        print(e)
+
+
+extract_frames_rd(r"testing_data\videos\two_face.mp4", "testing_data\videos")
 
 def extract_frames(path, output_dir, intervals=1):
     frames = []
@@ -39,7 +64,7 @@ def extract_frames(path, output_dir, intervals=1):
         ioi = []
         for i in range(len(frames)):
             p = mt.detect_faces(frames[i])
-            print(p)
+            print(f"Type: {type(p)}\nContent: {p}")
             ioi.append(p)
         # print(ioi)
         pprint.pprint(ioi)
@@ -56,8 +81,13 @@ def extract_frames(path, output_dir, intervals=1):
     pass
 
 def face_detection(frame):
+    img = cv2.cvtColor(cv2.imread(frame), cv2.COLOR_BGR2RGB)
+    detector = MTCNN()
+    p = detector.detect_faces(img)
     # img = cv2.cvtColor(cv2.imread(frame), cv2.COLOR_BGR2RGB)
-    print("Name")
-    pass
+    print(type(p[0]))
+    
 
-extract_frames(r"testing_data\\videos\\test.mp4", r"testing_data\\videos\\frames")
+# extract_frames(r"testing_data\\videos\\test.mp4", r"testing_data\\videos\\frames")
+# face_detection(r"testing_data\\t2.jpg")
+

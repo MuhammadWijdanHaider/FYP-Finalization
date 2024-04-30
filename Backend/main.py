@@ -3,12 +3,13 @@ from fastapi.responses import JSONResponse
 from mtcnn import MTCNN
 
 from tempfile import NamedTemporaryFile
+from moviepy.editor import VideoFileClip
 
 import asyncio
 
 # test section
 
-from moviepy.editor import VideoFileClip
+
 
 ALLOWED_EXTENSIONS = {"mp4", "avi"}
 
@@ -16,20 +17,44 @@ def allowed(filename:str):
     return "." in filename and filename.rsplit(".", 1)[1].lower()
 
 async def extract_frames(file_content: bytes):
-    
+    '''Function to extract frames and detection of faces and selection'''
     with NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
         temp_file.write(file_content)
         temp_file_path = temp_file.name
 
-
+    detector = MTCNN()
     clip = VideoFileClip(temp_file_path)
     frames = []
+    m_face_d = {"face_data": []}
     for frame in clip.iter_frames(fps=1):
-        frames.append(frame)
+        frames.append(frame) # this is depricated, and can be removed
+        face = detector.detect_faces(frame)
+        if len(face) > len(m_face_d["face_data"]):
+                m_face_d["face_data"] = face
+                m_face_d["frame"] = frame
     clip.close()
-    detector = MTCNN()
-    detector.detect_faces()
+    # for the cropping
+    if len(m_face_d["face_data"]) > 0:
+         pass
+    elif len(m_face_d["face_data"]) == 0:
+         # return error handle
+         pass
+    else:
+         # do for the single picture
+         face_data = m_face_d["face_data"]
+         if not(face_data['confidence'] < 0.9):
+              x, y, w, h = face_data['box']
+              pass
+         else:
+              raise ValueError("Face confidence is below 0.9")
+         pass
+         
+    
     return 1
+
+# first compare the len of all the frames, and the one with the greates number
+# of faces will be returned for further selection, and if there is only one
+# then proceed
 
 
 
