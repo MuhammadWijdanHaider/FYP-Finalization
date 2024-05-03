@@ -51,6 +51,7 @@ def extract_frames_rd(path, output, intervals = 1):
         cropped_face_size = (cropped_face_shape[1], cropped_face_shape[0])
         print(cropped_face_size)
         new_image = Image.new("RGB", cropped_face_size, (0, 0, 0, 0))
+        print(type(new_image))
         new_image.paste(Image.fromarray(cropped_face), (0, 0))
         new_image.save("FACE.jpg")
         transform = transforms.Compose([

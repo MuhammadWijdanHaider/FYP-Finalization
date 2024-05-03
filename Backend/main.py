@@ -1,3 +1,4 @@
+import PIL
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
 from mtcnn import MTCNN
@@ -8,7 +9,7 @@ from moviepy.editor import VideoFileClip
 import asyncio
 
 # test section
-
+from PIL import Image
 
 
 ALLOWED_EXTENSIONS = {"mp4", "avi"}
@@ -34,6 +35,7 @@ async def extract_frames(file_content: bytes):
                 m_face_d["frame"] = frame
     clip.close()
     # for the cropping
+    new_image: PIL.Image.Image
     if len(m_face_d["face_data"]) > 0:
          pass
     elif len(m_face_d["face_data"]) == 0:
@@ -43,17 +45,20 @@ async def extract_frames(file_content: bytes):
          # do for the single picture
          face_data = m_face_d["face_data"]
          if not(face_data['confidence'] < 0.9):
-              x, y, w, h = face_data['box']
+              x, y, w, h = face_data[0]['box']
               x, y, w, h = max(x, 0), max(y, 0), max(w, 0), max(h, 0)
               cropped_face = m_face_d["frame"][y:y+h, x:x+w]
-              
-              pass
+              cropped_face_shape = cropped_face.shape
+              cropped_face_size = (cropped_face_shape[1], cropped_face_shape[0])
+              new_image = Image.new("RGB", cropped_face_size, (0, 0, 0, 0))
+              new_image.paste(Image.fromarray(cropped_face), (0, 0))
+
          else:
               raise ValueError("Face confidence is below 0.9")
          pass
          
     
-    return 1
+    return new_image
 
 # first compare the len of all the frames, and the one with the greates number
 # of faces will be returned for further selection, and if there is only one
