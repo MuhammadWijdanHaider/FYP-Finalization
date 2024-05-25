@@ -85,8 +85,8 @@ async def videoProcessing(file_content: bytes, information: dict):
          # now it is not viable
          pass
      elif len(m_face_d["face_data"]) == 0:
-         return 23
-         pass
+         raise HTTPException(status_code=422, detail="No face detected in the provided media.")
+
      else:
          # do for the single picture
          face_data = m_face_d["face_data"]
@@ -99,8 +99,7 @@ async def videoProcessing(file_content: bytes, information: dict):
               new_image = Image.new("RGB", cropped_face_size, (0, 0, 0, 0))
               new_image.paste(Image.fromarray(cropped_face), (0, 0))
          else:
-              raise ValueError("Face confidence is below 0.9")
-         pass
+              raise HTTPException(status_code=422, detail="No face detected in the provided media.")
 
      return new_image
      
