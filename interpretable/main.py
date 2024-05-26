@@ -50,7 +50,7 @@ transform = transforms.Compose([
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 
-img_path = r"m1.jpg"
+img_path = r"m4.jpg"
 image = Image.open(img_path).convert("RGB")
 input_image = transform(image).unsqueeze(0)
 
@@ -73,7 +73,7 @@ saliency_layer = 'model.block12.rep.4.conv1'
 #predicted_class = output.argmax(dim=1)
 
 # Perform Grad-CAM attribution
-grad_cam_result = linear_approx(model, input_image, saliency_layer=saliency_layer, target=prediction)
+grad_cam_result = grad_cam(model, input_image, saliency_layer=saliency_layer, target=prediction)
 grad_cam_heatmap = grad_cam_result[0].detach().numpy().sum(axis=0)
 
 
@@ -106,7 +106,7 @@ plt.axis('off')
 plt.show()
 p = cv2.cvtColor(overlayed_image, cv2.COLOR_BGR2RGB)
 image = Image.fromarray(p)
-image.save('image10.png')
+image.save('m4_grad.png')
 # Visualize the resized heatmap
 # plt.imshow(resized_heatmap, cmap='jet')
 # plt.axis('off')

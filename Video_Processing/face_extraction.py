@@ -28,15 +28,15 @@ def croppingV2(data):
     new_image.paste(Image.fromarray(face_image), (0, 0))
     face_image_pil = Image.fromarray(face_image)
     face_image_pil.show()
-    new_image.save("m1.jpg")
+    new_image.save("m4.jpg")
 
-path = r"frame_16.jpg"
+path = r"m4.jpg"
 img = cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
 p = n.detect_faces(img)
 pprint.pprint(p)
 # l = n.detect_faces(img)
 for i in range(len(p)):
-    p[i]['image'] = img
-    croppingV2(p[i])
+    p[0]['image'] = img
+    croppingV2(p[0])
     
 
