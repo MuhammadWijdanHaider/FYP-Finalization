@@ -101,6 +101,15 @@ async def videoProcessing(file_content: bytes, information: dict):
      
      pass
 
+async def preprocessing(file_content):
+    transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize((224, 224), antialias=True),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+    img = transform(file_content)
+    img = img.unsqueeze(0)        
+    return img
 
 
 async def audio_processing(file_content: bytes, required):
@@ -142,6 +151,8 @@ async def image_processing(file_content):
         raise HTTPException(status_code=400, detail="No faces detected in the image.")
     else:
         face = faces[0]
+        print(faces)
+        print(faces[0])
         if not (face['confidence'] < 0.9):
             x, y, w, h = face['box']
             x, y, w, h = max(x, 0), max(y, 0), max(w, 0), max(h, 0)
@@ -153,6 +164,23 @@ async def image_processing(file_content):
             raise HTTPException(status_code=400, detail="No faces detected in the image.")
     return temp_img
 
+
+async def make_predictions(img, type):
+    prediction: int
+    if type == "audio":
+        with torch.no_grad():
+            output = model_audio(pixel_values=img)
+        logits = output.logits
+        prediction = torch.argmax(logits).item()
+    elif type == "image":
+        with torch.no_grad():
+            output = model(pixel_values=img)
+        logits = output.logits
+        prediction = torch.argmax(logits).item()
+    else:
+        raise HTTPException(status_code=500, detail="Internal Error")
+    return prediction
+
 app = FastAPI()
 
 @app.post("/upload/")
@@ -162,34 +190,17 @@ async def upload_file_and_json(file: UploadFile = File(...)):
     extension = "." in filename and filename.rsplit(".", 1)[1].lower()
     if not extension in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="File extension not allowed")
-    print(filename)
-    print(AUDIO_EXTENSIONS)
+    prediction:int
+    p_type: str
     if extension in AUDIO_EXTENSIONS:
         mel_spectrograms = await audio_processing(file_content, required={"filename":extension, "mint": True})
         mel_spectrograms = mel_spectrograms.convert('RGB')
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Resize((224, 224), antialias=True),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
-        img = transform(mel_spectrograms)
-        img = img.unsqueeze(0)        
-        with torch.no_grad():
-            output = model_audio(pixel_values=img)
-        logits = output.logits
-        prediction = torch.argmax(logits).item()
-        return {"file_uploaded": prediction}
+        img = await preprocessing(mel_spectrograms)       
+        prediction = await make_predictions(img, "audio")
+        p_type = "Audio"
     elif extension in IMAGE_EXTENSIONS:
         image = await image_processing(file_content)
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Resize((224, 224)),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
-        img = transform(image)
-        img = img.unsqueeze(0)
-        with torch.no_grad():
-            output = model(pixel_values=img)
-        logits = output.logits
-        prediction = torch.argmax(logits).item()
-        return {"file_uploaded": prediction, "Is_Image": "image"}
+        img = await preprocessing(image) 
+        prediction = await make_predictions(img, "image")
+        p_type = "Image"
+    return {"file_uploaded": prediction, "Type": p_type}
