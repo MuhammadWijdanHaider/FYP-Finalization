@@ -1,46 +1,40 @@
+from io import BytesIO
 import PIL
 import PIL.Image
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from mtcnn import MTCNN
-
 from tempfile import NamedTemporaryFile
 from moviepy.editor import VideoFileClip
-
 import asyncio
-
-# test section
+import PIL
+import PIL.Image
 from PIL import Image
 import torchvision.transforms as transforms
-from torchvision import transforms
 import torch
+import numpy as np
 import librosa
+import cv2
+import soundfile as sf
 
-
-# Model loading bay, it is very resource heavy
-#model_path = r"Models\\celebdf_final_model.pth"
-#model_path_audio = r"Models\\audio_model_epoch5.pth"
-#device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#model_audio = torch.load(model_path_audio, map_location=device)
-#model = torch.load(model_path, map_location=device)
-#model.eval()
-#model_audio.eval()
+# Model loading
+model_path = r"Models\celebdf_final_model.pth"
+model_path_audio = r"Models\audio_model_epoch5.pth"
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model_audio = torch.load(model_path_audio, map_location=device)
+model = torch.load(model_path, map_location=device)
+model.eval()
+model_audio.eval()
 detector = MTCNN()
 
-ALLOWED_EXTENSIONS = {"mp4", "avi"}
+ALLOWED_EXTENSIONS = ["mp3", "flac", "wav", "mp4", "mov", "mkv", "jpg", "jpeg", "png"]
+AUDIO_EXTENSIONS = ["mp3", "flac", "wav"]
+VIDEO_EXTENSIONS = ["mp4", "mov", "mkv"]
+IMAGE_EXTENSIONS = ["jpg", "jpeg", "png"]
+AUDIO_DIM = (224,224)
 
-def allowed(filename:str):
+def allowed(filename: str):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def audio_gen():
-     dim = (224, 224)
-     x, sr = librosa.load
-     pass
-
-
-def extract_faces(frames: list):
-    
-    pass
 
 async def videoProcessing(file_content: bytes, information: dict):
      '''ths first step is to find whether the video's length is appropriate or not, but before that'''
@@ -67,7 +61,7 @@ async def videoProcessing(file_content: bytes, information: dict):
             raise HTTPException(status_code=400, detail="The provided video and timestamps exceed the limit, which is 10 seconds. Please set the time stamps accordingly")
      
      # Frame extraction starts here, while we also start the extraction of the audio {later}
-     print(new.duration)
+     
      frames = []
      m_face_d = {"face_data": []}
      for frame in new.iter_frames(fps=1):
@@ -107,93 +101,95 @@ async def videoProcessing(file_content: bytes, information: dict):
      
      pass
 
-async def extraction_bay(file_content: bytes, required):
-     '''Function to extract various things from the Video Files'''
-     with NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
-        temp_file.write(file_content)
-        temp_file_path = temp_file.name
-     clip = VideoFileClip(temp_file_path)
-     pass
 
-async def extract_frames(file_content: bytes):
-    '''Function to extract frames and detection of faces and selection'''
-    with NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
-        temp_file.write(file_content)
-        temp_file_path = temp_file.name
 
-    
-    clip = VideoFileClip(temp_file_path)
-    frames = []
-    m_face_d = {"face_data": []}
-    for frame in clip.iter_frames(fps=1):
-        face = detector.detect_faces(frame)
-        if len(face) > len(m_face_d["face_data"]):
-                m_face_d["face_data"] = face
-                m_face_d["frame"] = frame
-    clip.close()
-    # for the cropping
-    new_image: PIL.Image.Image
-    if len(m_face_d["face_data"]) > 0:
-         # the feature will be implemented when the frontend is finished because
-         # now it is not viable
-         pass
-    elif len(m_face_d["face_data"]) == 0:
-         # return error handle
-         pass
+async def audio_processing(file_content: bytes, required):
+    aud_file = file_content
+    if required["mint"] == True:
+        aud_file = await retTempFile(file_content=file_content, suffixg=required["filename"])
+        y, sr = librosa.load(aud_file, sr=None)
     else:
-         # do for the single picture
-         face_data = m_face_d["face_data"]
-         if not(face_data['confidence'] < 0.9):
-              x, y, w, h = face_data[0]['box']
-              x, y, w, h = max(x, 0), max(y, 0), max(w, 0), max(h, 0)
-              cropped_face = m_face_d["frame"][y:y+h, x:x+w]
-              cropped_face_shape = cropped_face.shape
-              cropped_face_size = (cropped_face_shape[1], cropped_face_shape[0])
-              new_image = Image.new("RGB", cropped_face_size, (0, 0, 0, 0))
-              new_image.paste(Image.fromarray(cropped_face), (0, 0))
-
-         else:
-              raise ValueError("Face confidence is below 0.9")
-         pass
-         
+        audio_buffer = BytesIO()
+        file_content.write_audiofile(audio_buffer, codec='pcm_s16le')
+        audio_buffer.seek(0)
+        y, sr = sf.read(audio_buffer)
     
-    return new_image
+    S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=175)
+    S_dB = librosa.power_to_db(S)
+    resized = cv2.resize(S_dB, AUDIO_DIM)
+    normalized_image = (resized - np.min(resized)) * (255.0 / (np.max(resized) - np.min(resized)))
+    normalized_image = normalized_image.astype('uint8')
+    image = Image.fromarray(normalized_image)
+    return image
 
-async def audio_spectogram_generation():
-     
-     pass
+async def retTempFile(file_content, suffixg):
+    with NamedTemporaryFile(suffix=suffixg, delete=False) as temp_file:
+        temp_file.write(file_content)
+        temp_file_path = temp_file.name
+    return temp_file_path
 
-async def prediction(image: PIL.Image.Image):
-      
-     transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Resize((224, 224), antialias=True)
-        ])
-     img = transform(image)
-     img = img.unsqueeze(0)
-     pass
+async def image_processing(file_content):
+    image_bytes = BytesIO(file_content)
+    input_image = Image.open(image_bytes).convert("RGB")
+    pixels = np.array(input_image)
+    pixels = pixels.astype('uint8')
+    temp_img = None
+    faces = detector.detect_faces(pixels)
+    
+    if len(faces) > 1:
+        pass  # further implementation after the frontend is done
+    elif len(faces) == 0:
+        raise HTTPException(status_code=400, detail="No faces detected in the image.")
+    else:
+        face = faces[0]
+        if not (face['confidence'] < 0.9):
+            x, y, w, h = face['box']
+            x, y, w, h = max(x, 0), max(y, 0), max(w, 0), max(h, 0)
+            extracted_face = input_image.crop((x, y, x+w, y+h))
+            new_image = Image.new("RGB", extracted_face.size, (0, 0, 0, 0))
+            new_image.paste(extracted_face, (0, 0))
+            temp_img = new_image
+        else:
+            raise HTTPException(status_code=400, detail="No faces detected in the image.")
+    return temp_img
 
-# , info: str = Form(...)
 app = FastAPI()
+
 @app.post("/upload/")
 async def upload_file_and_json(file: UploadFile = File(...)):
-    if not allowed(file.filename):
-        raise HTTPException(status_code=400, detail="File extension not allowed")
-    # Read the JSON data
-
-
-    # json_data = json.loads(info)
-    
-    # Process the uploaded file
     file_content = await file.read()
-    extracted_frames = await videoProcessing(file_content, information={"END": 30, "START": 17})
-    # Do something with the file and JSON data
-    # For demonstration, let's just print them
-    print("Uploaded file:", file.filename)
-    # print("JSON data:", json_data)
-    
-    # Here, you can manipulate the file_content or json_data as needed
-    
-    # You can also return a response or perform any other actions
-    
-    return {"file_uploaded": extracted_frames}
+    filename = file.filename
+    extension = "." in filename and filename.rsplit(".", 1)[1].lower()
+    if not extension in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="File extension not allowed")
+    print(filename)
+    print(AUDIO_EXTENSIONS)
+    if extension in AUDIO_EXTENSIONS:
+        mel_spectrograms = await audio_processing(file_content, required={"filename":extension, "mint": True})
+        mel_spectrograms = mel_spectrograms.convert('RGB')
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize((224, 224), antialias=True),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        img = transform(mel_spectrograms)
+        img = img.unsqueeze(0)        
+        with torch.no_grad():
+            output = model_audio(pixel_values=img)
+        logits = output.logits
+        prediction = torch.argmax(logits).item()
+        return {"file_uploaded": prediction}
+    elif extension in IMAGE_EXTENSIONS:
+        image = await image_processing(file_content)
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize((224, 224)),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        img = transform(image)
+        img = img.unsqueeze(0)
+        with torch.no_grad():
+            output = model(pixel_values=img)
+        logits = output.logits
+        prediction = torch.argmax(logits).item()
+        return {"file_uploaded": prediction, "Is_Image": "image"}
