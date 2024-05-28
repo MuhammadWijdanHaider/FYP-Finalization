@@ -16,20 +16,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model_eval = torch.load(r"Models\celebdf_final_model.pth", map_location=device)
 model_eval.eval()
 
-def print_accessible_layers(model, prefix=''):
-    for name, module in model.named_children():
-        module_name = f"{prefix}.{name}" if prefix else name
-        print(f"Module name: {module_name}")
-        print(f"Module type: {type(module)}")
-        print()
-        if isinstance(module, torch.nn.Module):
-            print_accessible_layers(module, module_name)
-
-def is_layer_available(model, layer_name):
-    for name, module in model.named_modules():
-        if name == layer_name:
-            return True
-    return False
 
 # Example usage
 # layer_name = 'model.conv4.conv1'
@@ -50,9 +36,10 @@ transform = transforms.Compose([
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 
-img_path = r"m4.jpg"
+img_path = r"m24.jpg"
 image = Image.open(img_path).convert("RGB")
 input_image = transform(image).unsqueeze(0)
+print(type(input_image))
 
 with torch.no_grad():
         output = model_eval(pixel_values=input_image)  # Specify pixel_values
@@ -91,6 +78,8 @@ def display_heatmap(heatmap, title):
 resized_heatmap = cv2.resize(grad_cam_heatmap, (224, 224))
 
 input_image = plt.imread(img_path)
+print(type(input_image))
+print(f"The data type of the ndarray is: {input_image.dtype}")
 input_image = cv2.cvtColor(input_image, cv2.COLOR_RGBA2RGB)
 
 input_image = cv2.resize(input_image, (224,224))

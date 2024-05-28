@@ -118,39 +118,43 @@
 # # face_detection(r"testing_data\\t2.jpg")
 
 
-import librosa
-from moviepy.editor import VideoFileClip
+# import ffmpeg
+# import numpy as np
+# import librosa
+# from io import BytesIO
 
-def load_audio_from_video(video_path):
-  """
-  Loads audio from a video using MoviePy and returns it as a Librosa audio object.
-
-  Args:
-      video_path: Path to the video file.
-
-  Returns:
-      A tuple containing the audio waveform (y) and sample rate (sr).
-  """
-  # Open the video clip using MoviePy
-  clip = VideoFileClip(video_path)
-
-  # Get access to the audio data as a NumPy array
-  audio_data = [clip.audio.to_soundarray()]
-
-  # Close the video clip (optional for resource management)
-  clip.close()
-
-  # Load the audio data into Librosa
-  y, sr = librosa.load(audio_data, sr=None)  # sr=None to infer sample rate
-
-  return y, sr
-
-# Example usage
+# # Step 1: Extract audio from the video and convert it to an in-memory byte stream
 video_path = r"testing_data\videos\test.mp4"
-audio_data, sample_rate = load_audio_from_video(video_path)
+from moviepy.editor import VideoFileClip
+from pydub import AudioSegment
+from io import BytesIO
+import numpy as np
+video_clip = VideoFileClip(video_path)
+audio_clip = video_clip.audio
 
+# Get the audio data as a numpy array
+audio_fps = audio_clip.fps
 
+# Initialize an empty list to hold audio chunks
+audio_chunks = []
 
+# Iterate over audio chunks and collect them into a list
+for chunk in audio_clip.iter_chunks(fps=audio_fps, chunksize=4096):
+    audio_chunks.append(chunk)
 
+# Stack the collected audio chunks into a single numpy array
+audio_data = np.vstack(audio_chunks)
+if audio_data.ndim > 1:
+    audio_data = audio_data.mean(axis=1)  # Convert to mono by averaging channels
+from scipy.io.wavfile import write
+# Step 2: Convert the numpy array to a WAV format byte stream
+buffer = BytesIO()
+write(buffer, audio_fps, (audio_data * 32767).astype(np.int16))
+buffer.seek(0)
+import librosa
+y, sr = librosa.load(buffer, sr=audio_fps)
 
+# Now you can use the audio data with librosa functions
+mel_spectrogram = librosa.feature.melspectrogram(y=y, sr=sr)
 
+print(mel_spectrogram.shape)

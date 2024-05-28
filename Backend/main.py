@@ -1,11 +1,14 @@
 from io import BytesIO
 import PIL
 import PIL.Image
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, Response, UploadFile, HTTPException, Form
+from pydantic import BaseModel
+from typing import Dict, Any
+
+from fastapi.responses import JSONResponse, StreamingResponse
 from mtcnn import MTCNN
 from tempfile import NamedTemporaryFile
-from moviepy.editor import VideoFileClip
+from moviepy.editor import VideoFileClip, AudioFileClip
 import asyncio
 import PIL
 import PIL.Image
@@ -16,22 +19,45 @@ import numpy as np
 import librosa
 import cv2
 import soundfile as sf
-import math
+from scipy.io.wavfile import write
+
+# interpretability import section
+from torchray.attribution.grad_cam import grad_cam
+
+
+class Payload(BaseModel):
+    data: Dict[str, Any]
+
+
+
 # Model loading
 model_path = r"Models\celebdf_final_model.pth"
 model_path_audio = r"Models\audio_model_epoch5.pth"
+model_inter_path = r"Models\xception.pth"
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model_audio = torch.load(model_path_audio, map_location=device)
 model = torch.load(model_path, map_location=device)
+model_inter = torch.load(model_inter_path, map_location = device)
 model.eval()
 model_audio.eval()
+#model_inter.eval()
 detector = MTCNN()
 
 ALLOWED_EXTENSIONS = ["mp3", "flac", "wav", "mp4", "mov", "mkv", "jpg", "jpeg", "png"]
 AUDIO_EXTENSIONS = ["mp3", "flac", "wav"]
 VIDEO_EXTENSIONS = ["mp4", "mov", "mkv"]
 IMAGE_EXTENSIONS = ["jpg", "jpeg", "png"]
-AUDIO_DIM = (224,224)
+AUDIO_DIM = (175,175)
+SILENCY_LAYER = 'model.block12.rep.4.conv1'
+
+
+def ndarray_to_image(ndarray: np.ndarray) -> BytesIO:
+    image = Image.fromarray(ndarray.astype('uint8'), 'RGB')
+    img_io = BytesIO()
+    image.save(img_io, format='PNG')
+    img_io.seek(0)
+    return img_io
+    pass
 
 def allowed(filename: str):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -104,32 +130,48 @@ async def videoProcessing(file_content: bytes, information: dict):
 async def preprocessing(file_content):
     transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Resize((224, 224), antialias=True),
+            transforms.Resize((224, 224)),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
     img = transform(file_content)
     img = img.unsqueeze(0)        
+    print(type(img))
     return img
 
 
-async def audio_processing(file_content: bytes, required):
+async def audio_processing(file_content, required):
     aud_file = file_content
     if required["mint"] == True:
         aud_file = await retTempFile(file_content=file_content, suffixg=required["filename"])
-        y, sr = librosa.load(aud_file, sr=None)
+        y, sr = librosa.load(aud_file)
     else:
-        audio_buffer = BytesIO()
-        file_content.write_audiofile(audio_buffer, codec='pcm_s16le')
-        audio_buffer.seek(0)
-        y, sr = sf.read(audio_buffer)
-    
-    S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=175)
-    S_dB = librosa.power_to_db(S)
-    resized = cv2.resize(S_dB, AUDIO_DIM)
-    normalized_image = (resized - np.min(resized)) * (255.0 / (np.max(resized) - np.min(resized)))
-    normalized_image = normalized_image.astype('uint8')
-    image = Image.fromarray(normalized_image)
-    return image
+        try:
+            audio_clip:AudioFileClip = file_content
+            print(type(audio_clip))
+            audio_fps = audio_clip.fps
+            audio_chunks = []
+            
+            for chunk in audio_clip.iter_chunks(fps=audio_fps, chunksize=4096):
+                audio_chunks.append(chunk)
+            audio_data = np.vstack(audio_chunks)
+            if audio_data.ndim > 1:
+                audio_data = audio_data.mean(axis=1)
+            buffer = BytesIO()
+            write(buffer, audio_fps, (audio_data * 32767).astype(np.int16))
+            buffer.seek(0)
+            y, sr = librosa.load(buffer, sr=audio_fps)
+        except Exception as e:
+            print(e) 
+    try:
+        S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=175)
+        S_dB = librosa.power_to_db(S)
+        resized = cv2.resize(S_dB, AUDIO_DIM)
+        normalized_image = (resized - np.min(resized)) * (255.0 / (np.max(resized) - np.min(resized)))
+        normalized_image = normalized_image.astype('uint8')
+        image = Image.fromarray(normalized_image)
+        return image
+    except Exception as e:
+        print(e)
 
 async def retTempFile(file_content, suffixg):
     with NamedTemporaryFile(suffix=suffixg, delete=False) as temp_file:
@@ -140,7 +182,9 @@ async def retTempFile(file_content, suffixg):
 async def image_processing(file_content):
     image_bytes = BytesIO(file_content)
     input_image = Image.open(image_bytes).convert("RGB")
+    print(type(input_image))
     pixels = np.array(input_image)
+
     pixels = pixels.astype('uint8')
     temp_img = None
     faces = detector.detect_faces(pixels)
@@ -151,8 +195,8 @@ async def image_processing(file_content):
         raise HTTPException(status_code=400, detail="No faces detected in the image.")
     else:
         face = faces[0]
-        print(faces)
-        print(faces[0])
+        #print(faces)
+        #print(faces[0])
         if not (face['confidence'] < 0.9):
             x, y, w, h = face['box']
             x, y, w, h = max(x, 0), max(y, 0), max(w, 0), max(h, 0)
@@ -217,7 +261,10 @@ async def video_processing(file_content, data):
                 m_face_d["face_data"] = face
                 m_face_d["frame"] = frame
     audio = new.audio
-    new.close()
+    # free up memories
+    # new.close()
+    # clip.close()
+
     new_image: PIL.Image.Image
     if len(m_face_d["face_data"]) > 1:
          # the feature will be implemented when the frontend is finished because
@@ -237,23 +284,35 @@ async def video_processing(file_content, data):
               new_image.paste(Image.fromarray(cropped_face), (0, 0))
         else:
               raise HTTPException(status_code=422, detail="No face detected in the provided media.")
-        pass
-    # convert audio into a byte like object
-    audio_bytes = audio.to_soundarray() 
-    audio_bytes = audio_bytes.tobytes()
 
+    max_audio = audio.max_volume()
     transformed = await preprocessing(new_image)
     image_prediction = await make_predictions(transformed, types="image")
-    with NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file_audio:
-        temp_file_audio.write(audio_bytes)
-        temp_file_path_audio = temp_file_audio.name
-    mel = await audio_processing(temp_file_path_audio, required={"mint": True})
-    transformed_audio = await preprocessing(mel)
-    audio_prediction = await make_predictions(transformed_audio, types="audio")
+    if not (max_audio <= 10):
+        mel = await audio_processing(audio, required={"mint": False})
+        mels = mel.convert('RGB')
+        transformed_audio = await preprocessing(mels)
+        audio_prediction = await make_predictions(transformed_audio, types="audio")
+    else:
+        audio_prediction = "The volume of the audio was too low for detection."
     return {"Image": image_prediction, "audio": audio_prediction}
 
 
-
+async def interpretability(image, prediction, tensor):
+    grad_cam_result = grad_cam(model_inter, tensor, saliency_layer='model.block12.rep.4.conv1', target=prediction)
+    grad_cam_heatmap = grad_cam_result[0].detach().numpy().sum(axis=0)
+    resized_heatmap = cv2.resize(grad_cam_heatmap, (224, 224))
+    # change this if error occurs
+    nd = np.array(image, dtype=np.uint8)
+    input_image = cv2.cvtColor(nd, cv2.COLOR_RGBA2RGB)
+    input_image = cv2.resize(input_image, (224,224))
+    resized_heatmap = (resized_heatmap - resized_heatmap.min()) / (resized_heatmap.max() - resized_heatmap.min() + 1e-8)
+    heatmap_rgb = cv2.applyColorMap(np.uint8(255 * resized_heatmap), cv2.COLORMAP_JET)
+    overlayed_image = cv2.addWeighted(input_image, 0.5, heatmap_rgb, 0.5, 0)
+    p = cv2.cvtColor(overlayed_image, cv2.COLOR_BGR2RGB)
+    print(type(p))
+    return p
+    
 
 app = FastAPI()
 
@@ -276,9 +335,16 @@ async def upload_file_and_json(file: UploadFile = File(...)):
         image = await image_processing(file_content)
         img = await preprocessing(image) 
         prediction = await make_predictions(img, "image")
+        interpretability_result:np.ndarray = await interpretability(image, prediction, img)
+        img_io = ndarray_to_image(interpretability_result)
+        print(type(img_io))
+        payload = {"Prediction": str(prediction)}
+        # file_response = StreamingResponse(img_io, media_type="image/png")
         p_type = "Image"
+        return Response(content = img_io.getvalue(), headers = payload, media_type="image/png")
     elif extension in VIDEO_EXTENSIONS:
         p = await video_processing(file_content, data={"ext": ".mp4", "END": 8, "START": 2})
         return p
         pass
     return {"file_uploaded": prediction, "Type": p_type}
+
