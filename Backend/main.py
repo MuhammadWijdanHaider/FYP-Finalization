@@ -16,7 +16,7 @@ import numpy as np
 import librosa
 import cv2
 import soundfile as sf
-
+import math
 # Model loading
 model_path = r"Models\celebdf_final_model.pth"
 model_path_audio = r"Models\audio_model_epoch5.pth"
@@ -74,7 +74,7 @@ async def videoProcessing(file_content: bytes, information: dict):
      new.close()
      # very dependent on the FrontEnd architecture
      new_image: PIL.Image.Image
-     if len(m_face_d["face_data"]) > 0:
+     if len(m_face_d["face_data"]) > 1:
          # the feature will be implemented when the frontend is finished because
          # now it is not viable
          pass
@@ -165,21 +165,95 @@ async def image_processing(file_content):
     return temp_img
 
 
-async def make_predictions(img, type):
+async def make_predictions(img, types):
     prediction: int
-    if type == "audio":
+    if types == "audio":
         with torch.no_grad():
             output = model_audio(pixel_values=img)
         logits = output.logits
         prediction = torch.argmax(logits).item()
-    elif type == "image":
+    elif types == "image":
         with torch.no_grad():
             output = model(pixel_values=img)
         logits = output.logits
         prediction = torch.argmax(logits).item()
     else:
         raise HTTPException(status_code=500, detail="Internal Error")
+    print(prediction)
     return prediction
+
+async def video_processing(file_content, data):
+    clip: VideoFileClip
+    # tem = retTempFile(file_content, data["ext"])
+    with NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
+        temp_file.write(file_content)
+        temp_file_path = temp_file.name
+    clip = VideoFileClip(temp_file_path)
+    # print("TEST")
+    dur = clip.duration
+    new: VideoFileClip
+
+    if dur <= 10:
+        providedTime = data["END"] - data["START"]
+        if providedTime > 0 and providedTime <= 10:
+            new = clip.subclip(data["START"], data["END"])
+        else:
+            raise HTTPException(status_code=400, detail="The provided video and timestamps exceed the limit, which is 10 seconds. Please set the time stamps accordingly")
+        pass
+    else:
+        providedTime = data["END"] - data["START"]
+        if providedTime > 0 and providedTime <= 10:
+            new = clip.subclip(data["START"], data["END"])
+        else:
+            raise HTTPException(status_code=400,
+                                detail="The provided video and timestamps exceed the limit, which is 10 seconds. Please set the time stamps accordingly")
+    frames = []
+    m_face_d = {"face_data": []}
+    for frame in new.iter_frames(fps=1):
+        print(type(frame))
+        face = detector.detect_faces(frame)
+
+        if len(face) > len(m_face_d["face_data"]):
+                m_face_d["face_data"] = face
+                m_face_d["frame"] = frame
+    audio = new.audio
+    new.close()
+    new_image: PIL.Image.Image
+    if len(m_face_d["face_data"]) > 1:
+         # the feature will be implemented when the frontend is finished because
+         # now it is not viable
+         pass
+    elif len(m_face_d["face_data"]) == 0:
+         raise HTTPException(status_code=422, detail="No face detected in the provided media.")
+    else:
+        face_data = m_face_d["face_data"]
+        if not(face_data[0]['confidence'] < 0.9):
+              x, y, w, h = face_data[0]['box']
+              x, y, w, h = max(x, 0), max(y, 0), max(w, 0), max(h, 0)
+              cropped_face = m_face_d["frame"][y:y+h, x:x+w]
+              cropped_face_shape = cropped_face.shape
+              cropped_face_size = (cropped_face_shape[1], cropped_face_shape[0])
+              new_image = Image.new("RGB", cropped_face_size, (0, 0, 0, 0))
+              new_image.paste(Image.fromarray(cropped_face), (0, 0))
+        else:
+              raise HTTPException(status_code=422, detail="No face detected in the provided media.")
+        pass
+    # convert audio into a byte like object
+    audio_bytes = audio.to_soundarray() 
+    audio_bytes = audio_bytes.tobytes()
+
+    transformed = await preprocessing(new_image)
+    image_prediction = await make_predictions(transformed, types="image")
+    with NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file_audio:
+        temp_file_audio.write(audio_bytes)
+        temp_file_path_audio = temp_file_audio.name
+    mel = await audio_processing(temp_file_path_audio, required={"mint": True})
+    transformed_audio = await preprocessing(mel)
+    audio_prediction = await make_predictions(transformed_audio, types="audio")
+    return {"Image": image_prediction, "audio": audio_prediction}
+
+
+
 
 app = FastAPI()
 
@@ -203,4 +277,8 @@ async def upload_file_and_json(file: UploadFile = File(...)):
         img = await preprocessing(image) 
         prediction = await make_predictions(img, "image")
         p_type = "Image"
+    elif extension in VIDEO_EXTENSIONS:
+        p = await video_processing(file_content, data={"ext": ".mp4", "END": 8, "START": 2})
+        return p
+        pass
     return {"file_uploaded": prediction, "Type": p_type}
