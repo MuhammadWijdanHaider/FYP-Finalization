@@ -15,7 +15,7 @@
 # def frames_extraction(st_time, en_time, file, intervals=1):
 #     frames = []
 #     try:
-#         clip = file
+        # clip = file
 #     except Exception as e:
 #         print(e)
 #     pass
@@ -124,37 +124,66 @@
 # from io import BytesIO
 
 # # Step 1: Extract audio from the video and convert it to an in-memory byte stream
-video_path = r"testing_data\videos\test.mp4"
-from moviepy.editor import VideoFileClip
-from pydub import AudioSegment
-from io import BytesIO
-import numpy as np
-video_clip = VideoFileClip(video_path)
-audio_clip = video_clip.audio
+# video_path = r"testing_data\videos\test.mp4"
+# from moviepy.editor import VideoFileClip
+# from pydub import AudioSegment
+# from io import BytesIO
+# import numpy as np
+# video_clip = VideoFileClip(video_path)
+# audio_clip = video_clip.audio
 
-# Get the audio data as a numpy array
-audio_fps = audio_clip.fps
+# # Get the audio data as a numpy array
+# audio_fps = audio_clip.fps
 
-# Initialize an empty list to hold audio chunks
-audio_chunks = []
+# # Initialize an empty list to hold audio chunks
+# audio_chunks = []
 
-# Iterate over audio chunks and collect them into a list
-for chunk in audio_clip.iter_chunks(fps=audio_fps, chunksize=4096):
-    audio_chunks.append(chunk)
+# # Iterate over audio chunks and collect them into a list
+# for chunk in audio_clip.iter_chunks(fps=audio_fps, chunksize=4096):
+#     audio_chunks.append(chunk)
 
-# Stack the collected audio chunks into a single numpy array
-audio_data = np.vstack(audio_chunks)
-if audio_data.ndim > 1:
-    audio_data = audio_data.mean(axis=1)  # Convert to mono by averaging channels
-from scipy.io.wavfile import write
-# Step 2: Convert the numpy array to a WAV format byte stream
-buffer = BytesIO()
-write(buffer, audio_fps, (audio_data * 32767).astype(np.int16))
-buffer.seek(0)
-import librosa
-y, sr = librosa.load(buffer, sr=audio_fps)
+# # Stack the collected audio chunks into a single numpy array
+# audio_data = np.vstack(audio_chunks)
+# if audio_data.ndim > 1:
+#     audio_data = audio_data.mean(axis=1)  # Convert to mono by averaging channels
+# from scipy.io.wavfile import write
+# # Step 2: Convert the numpy array to a WAV format byte stream
+# buffer = BytesIO()
+# write(buffer, audio_fps, (audio_data * 32767).astype(np.int16))
+# buffer.seek(0)
+# import librosa
+# y, sr = librosa.load(buffer, sr=audio_fps)
 
-# Now you can use the audio data with librosa functions
-mel_spectrogram = librosa.feature.melspectrogram(y=y, sr=sr)
+# # Now you can use the audio data with librosa functions
+# mel_spectrogram = librosa.feature.melspectrogram(y=y, sr=sr)
 
-print(mel_spectrogram.shape)
+# print(mel_spectrogram.shape)
+
+
+import cv2
+from mtcnn import MTCNN
+
+def detect_faces(image_path):
+    # Load image
+    image = cv2.imread(image_path)
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # Initialize MTCNN
+    mtcnn = MTCNN(keep_all=True, device='cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Detect faces
+    boxes, _, _ = mtcnn.detect(image_rgb)
+
+    # Display the result
+    if boxes is not None:
+        for box in boxes:
+            x, y, w, h = box.astype(int)
+            cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+    cv2.imshow('Faces Detected', cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+# Example usage
+image_path = 'path_to_your_image.jpg'
+detect_faces(image_path)

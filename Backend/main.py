@@ -62,70 +62,6 @@ def ndarray_to_image(ndarray: np.ndarray) -> BytesIO:
 def allowed(filename: str):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-async def videoProcessing(file_content: bytes, information: dict):
-     '''ths first step is to find whether the video's length is appropriate or not, but before that'''
-     with NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
-        temp_file.write(file_content)
-        temp_file_path = temp_file.name
-     clip:VideoFileClip = VideoFileClip(temp_file_path)
-     dur = clip.duration
-     new: VideoFileClip
-     if dur <= 10:
-        providedTime = information["END"] - information["START"]
-        # trimming parameters
-        if providedTime > 0 and providedTime <= 10:
-            new = clip.subclip(information["START"], information["END"])
-        else:
-            raise HTTPException(status_code=400, detail="The provided video and timestamps exceed the limit, which is 10 seconds. Please set the time stamps accordingly")
-     else:
-        providedTime = information["END"] - information["START"]
-        # trimming parameters
-        if providedTime > 0 and providedTime <= 10:
-            pass
-            new = clip.subclip(information["START"], information["END"])
-        else:
-            raise HTTPException(status_code=400, detail="The provided video and timestamps exceed the limit, which is 10 seconds. Please set the time stamps accordingly")
-     
-     # Frame extraction starts here, while we also start the extraction of the audio {later}
-     
-     frames = []
-     m_face_d = {"face_data": []}
-     for frame in new.iter_frames(fps=1):
-        print(type(frame))
-        face = detector.detect_faces(frame)
-
-        if len(face) > len(m_face_d["face_data"]):
-                m_face_d["face_data"] = face
-                m_face_d["frame"] = frame
-     new.close()
-     # very dependent on the FrontEnd architecture
-     new_image: PIL.Image.Image
-     if len(m_face_d["face_data"]) > 1:
-         # the feature will be implemented when the frontend is finished because
-         # now it is not viable
-         pass
-     elif len(m_face_d["face_data"]) == 0:
-         raise HTTPException(status_code=422, detail="No face detected in the provided media.")
-
-     else:
-         # do for the single picture
-         face_data = m_face_d["face_data"]
-         if not(face_data['confidence'] < 0.9):
-              x, y, w, h = face_data[0]['box']
-              x, y, w, h = max(x, 0), max(y, 0), max(w, 0), max(h, 0)
-              cropped_face = m_face_d["frame"][y:y+h, x:x+w]
-              cropped_face_shape = cropped_face.shape
-              cropped_face_size = (cropped_face_shape[1], cropped_face_shape[0])
-              new_image = Image.new("RGB", cropped_face_size, (0, 0, 0, 0))
-              new_image.paste(Image.fromarray(cropped_face), (0, 0))
-         else:
-              raise HTTPException(status_code=422, detail="No face detected in the provided media.")
-
-     return new_image
-     
-     
-     
-     pass
 
 async def preprocessing(file_content):
     transform = transforms.Compose([
@@ -143,6 +79,9 @@ async def audio_processing(file_content, required):
     aud_file = file_content
     if required["mint"] == True:
         aud_file = await retTempFile(file_content=file_content, suffixg=required["filename"])
+        aud = AudioFileClip(aud_file)
+        if aud.max_volume() <= 12:
+            raise HTTPException(status_code=422, detail="Volume too low!")
         y, sr = librosa.load(aud_file)
     else:
         try:
@@ -190,6 +129,7 @@ async def image_processing(file_content):
     faces = detector.detect_faces(pixels)
     
     if len(faces) > 1:
+
         pass  # further implementation after the frontend is done
     elif len(faces) == 0:
         raise HTTPException(status_code=400, detail="No faces detected in the image.")
@@ -286,8 +226,8 @@ async def video_processing(file_content, data):
               raise HTTPException(status_code=422, detail="No face detected in the provided media.")
 
     max_audio = audio.max_volume()
-    transformed = await preprocessing(new_image)
-    image_prediction = await make_predictions(transformed, types="image")
+    transformed = await preprocessing(new_image) # this is a tensor
+    image_prediction = await make_predictions(transformed, types="image") # that is the prediction
     if not (max_audio <= 10):
         mel = await audio_processing(audio, required={"mint": False})
         mels = mel.convert('RGB')
@@ -295,7 +235,7 @@ async def video_processing(file_content, data):
         audio_prediction = await make_predictions(transformed_audio, types="audio")
     else:
         audio_prediction = "The volume of the audio was too low for detection."
-    return {"Image": image_prediction, "audio": audio_prediction}
+    return {"Image": image_prediction, "audio": audio_prediction, "PIL_IMAGE": new_image, "TENSORS": transformed}
 
 
 async def interpretability(image, prediction, tensor):
@@ -344,7 +284,12 @@ async def upload_file_and_json(file: UploadFile = File(...)):
         return Response(content = img_io.getvalue(), headers = payload, media_type="image/png")
     elif extension in VIDEO_EXTENSIONS:
         p = await video_processing(file_content, data={"ext": ".mp4", "END": 8, "START": 2})
-        return p
+        interpretability_result:np.ndarray = await interpretability(p["PIL_IMAGE"], p["Image"], p["TENSORS"])
+        img_io = ndarray_to_image(interpretability_result)
+        payload = {"Image_Pred": str(p["Image"]), "Audio_Pred": str(p["audio"])}
+        return Response(content = img_io.getvalue(), headers = payload, media_type="image/png")
+        
+        # {"Image": image_prediction, "audio": audio_prediction, "PIL_IMAGE": new_image, "TENSORS": transformed}
         pass
     return {"file_uploaded": prediction, "Type": p_type}
 

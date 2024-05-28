@@ -1,86 +1,53 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
-from PIL import Image
-import io
-from fastapi.responses import Response, JSONResponse
 from io import BytesIO
+from fastapi import FastAPI, File, Response, UploadFile, HTTPException, status
+from fastapi.responses import JSONResponse, StreamingResponse
+from mtcnn import MTCNN
+from PIL import Image
+import numpy as np
+import base64
+detector = MTCNN()
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow requests from all origins (replace with specific origins if needed)
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],  # Allow GET and POST requests (add other methods as needed)
+    allow_headers=["*"],  # Allow all headers (you can customize this based on your requirements)
+)
+def generate_images(images):
+    l = []
+    for image in images:
+        img_byte_array = BytesIO()
+        image.save(img_byte_array, format="jpeg")
+        img_byte_array.seek(0)
+        encoded_image = base64.b64encode(img_byte_array.getvalue()).decode('utf-8')
+        l.append(encoded_image)
+    return l 
 
-@app.post("/detect")
-async def detect_and_return_image(image_file: UploadFile = File(...)):
-    """
-    Handler of /detect POST endpoint
-    Receives uploaded file with a name "image_file",
-    passes it through YOLOv8 object detection
-    network and returns an array of bounding boxes.
-    :return: a JSON array of objects bounding
-    boxes in format
-    [[x1,y1,x2,y2,object_type,probability],..]
-    """
-    buf = await image_file.read()
-    boxes, class_prob = detect_objects_on_image(Image.open(BytesIO(buf)))
-    print(f'class proba {class_prob}')
-    annotated_image = annotate_image(Image.open(BytesIO(buf)), boxes)
-    return {
-        "annotated_image": image_to_base64(annotated_image),
-        "class_prob": class_prob
-    }
-
-
-def detect_objects_on_image(image):
-    """
-    Function receives an image,
-    passes it through YOLOv8 neural network
-    and returns an array of detected objects
-    and their bounding boxes
-    :param image: Input image
-    :return: Array of bounding boxes in format
-    [[x1,y1,x2,y2,object_type,probability],..]
-    """
-    model = YOLO('best.pt')
-    results = model.predict(image)
-    result = results[0]
-    output = []
-    class_prob = []
-    for box in result.boxes:
-        x1, y1, x2, y2 = [round(x) for x in box.xyxy[0].tolist()]
-        class_id = box.cls[0].item()
-        prob = round(box.conf[0].item(), 2)
-        output.append([x1, y1, x2, y2, result.names[class_id], prob])
-        class_prob.append([result.names[class_id], prob])
-    return output, class_prob
-
-
-def annotate_image(image, boxes):
-    """
-    Function annotates the image with bounding boxes.
-    :param image: Input image
-    :param boxes: Array of bounding boxes in format
-    [[x1,y1,x2,y2,object_type,probability],..]
-    :return: Annotated image
-    """
-    # Draw bounding boxes on the image
-    draw = ImageDraw.Draw(image)
-    for box in boxes:
-        x1, y1, x2, y2, object_type, probability = box
-        draw.rectangle([(x1, y1), (x2, y2)], outline="red", width=3)
-        draw.text((x1, y1 - 10), f"{object_type} ({probability})", fill="red")
-
-    return image
-
-
-def save_annotated_image(image):
-    """
-    Function saves the annotated image and returns
-    the image as a response.
-    :param image: Annotated image
-    :return: StreamingResponse with the image
-    """
-    output_buffer = BytesIO()
-    image.save(output_buffer, format="PNG")
-    output_buffer.seek(0)
-    return StreamingResponse(output_buffer, media_type="image/png")
-
-def image_to_base64(image):
-    buffered = BytesIO()
-    image.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode('utf-8')
+@app.post("/images", response_class=Response)
+async def upload_file_and_json(file: UploadFile = File(...)):
+    file_content = await file.read()
+    image_bytes = BytesIO(file_content)
+    input_image = Image.open(image_bytes).convert("RGB")
+    
+    pixels = np.array(input_image)
+    pixels = pixels.astype('uint8')
+    
+    faces = detector.detect_faces(pixels)
+    
+    t_faces = []
+    for face in faces:
+        if face['confidence'] >= 0.9:
+            x, y, w, h = face['box']
+            x, y, w, h = max(x, 0), max(y, 0), max(w, 0), max(h, 0)
+            extracted_face = input_image.crop((x, y, x+w, y+h))
+            new_image = Image.new("RGB", extracted_face.size, (0, 0, 0, 0))
+            new_image.paste(extracted_face, (0, 0))
+            t_faces.append(new_image)
+    return JSONResponse(content={"images": [generate_images(t_faces)]})
+    #return StreamingResponse(
+    #    generate_images(t_faces),
+    #    status_code=status.HTTP_200_OK,
+    #    media_type='image/jpeg'
+    #)
