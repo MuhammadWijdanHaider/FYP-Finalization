@@ -45,7 +45,8 @@ async def upload_file_and_json(file: UploadFile = File(...)):
             new_image = Image.new("RGB", extracted_face.size, (0, 0, 0, 0))
             new_image.paste(extracted_face, (0, 0))
             t_faces.append(new_image)
-    return JSONResponse(content={"images": [generate_images(t_faces)]})
+            
+    return JSONResponse(content={"images": generate_images(t_faces)})
     #return StreamingResponse(
     #    generate_images(t_faces),
     #    status_code=status.HTTP_200_OK,
