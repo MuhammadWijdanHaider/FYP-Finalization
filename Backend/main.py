@@ -82,9 +82,12 @@ async def audio_processing(file_content, required):
     aud_file = file_content
     if required["mint"] == True:
         aud_file = await retTempFile(file_content=file_content, suffixg=required["filename"])
-    
+        aud_file_chc = AudioFileClip(aud_file)
+        if aud_file_chc.max_volume() < 0.4:
+               raise HTTPException(status_code=422, detail="Volume is too low for detection")
+        else:
+            y, sr = librosa.load(aud_file)
 
-        y, sr = librosa.load(aud_file)
     else:
         try:
             audio_clip:AudioFileClip = file_content
@@ -111,6 +114,7 @@ async def audio_processing(file_content, required):
         normalized_image = normalized_image.astype('uint8')
         image = Image.fromarray(normalized_image)
         return image
+    # mel_spectrograms = mel_spectrograms.convert('RGB')
     except Exception as e:
         print(e)
 

@@ -1,7 +1,16 @@
+from tempfile import NamedTemporaryFile
+import warnings
 import torch
 from mtcnn import MTCNN
 import json
 from fastapi import FastAPI, Response, File, Form, UploadFile, HTTPException
+import librosa
+import cv2
+from PIL.Image import Image
+from PIL import Image
+import numpy as np
+from moviepy.editor import VideoClip, VideoFileClip, AudioClip, AudioFileClip
+warnings.filterwarnings("ignore")
 
 
 
@@ -29,14 +38,66 @@ model_audio.eval()
 #model_inter.eval()
 detector = MTCNN()
 
+async def makeTempFile(file_content, suffixg):
+     
+     with NamedTemporaryFile(suffix=suffixg, delete=False) as temp_file:
+        temp_file.write(file_content)
+        temp_file_path = temp_file.name
+     return temp_file_path
 
+async def extract_audio(file_content, required: dict):
+     # this checks whether the uploaded audio file is uploaded by the user or is extracted from the uploaded video file
+     if required["mint"]:
+          aud_file = await makeTempFile(file_content=file_content, suffixg=required["filename"])
+          # to check the volume, if it is zero, then we return an error message, and if it is above a certain
+          # threshold, we proceed to further analysis
+          aud_file_chc = AudioFileClip(aud_file)
+          if aud_file_chc.max_volume() < 0.4:
+               raise HTTPException(status_code=422, detail="Volume is too low for detection")
+          else:
+            y, sr = librosa.load(aud_file)
+     else:
+          
+          # this is for processing audio extracted from video, which is a tab complex, because we are not saving it anywhere
+          pass
+     S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=175)
+     S_dB = librosa.power_to_db(S)
+     resized = cv2.resize(S_dB, AUDIO_DIM)
+     normalized_image = (resized - np.min(resized)) * (255.0 / (np.max(resized) - np.min(resized)))
+     normalized_image = normalized_image.astype('uint8')
+     image = Image.fromarray(normalized_image)
+     rgb_image = image.convert('RGB')
+     return rgb_image
+
+
+def extract_frames_from_video(video_bytes):
+    """
+    Extracts frames from a video file that is in Bytes form without saving the video file using moviepy.
+
+    Args:
+        video_bytes (bytes): The video file in Bytes form.
+
+    Returns:
+        list: A list of PIL Image objects representing the frames of the video.
+    """
+    video_clip = VideoFileClip(BytesIO(video_bytes))
+    frames = []
+    for frame in video_clip.iter_frames():
+        frame = Image.fromarray(frame)
+        frames.append(frame)
+    return frames
+
+
+
+
+# Form(...)
 app = FastAPI()
 @app.post("/upload/")
-async def main(file: UploadFile = File(...), json_data:str = Form(...)):
+async def main(file: UploadFile = File(...), json_data:str = {"nm": 23}):
      
      file_content = await file.read()
      data = json.loads(json_data)
-     filename = file_content.filename
+     filename = file.filename
      extension = "." in filename and filename.rsplit(".", 1)[1].lower()
      # This part is for Video Processing
      if extension in VIDEO_EXTENSIONS:
@@ -46,6 +107,7 @@ async def main(file: UploadFile = File(...), json_data:str = Form(...)):
           pass
      # This part is for Audio Processing
      elif extension in AUDIO_EXTENSIONS:
+          
           pass
      else:
           raise HTTPException(status_code=422, detail="Unsupported File has been uploaded")

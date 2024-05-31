@@ -1,3 +1,4 @@
+
 from io import BytesIO
 from fastapi import FastAPI, File, Response, UploadFile, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -52,3 +53,20 @@ async def upload_file_and_json(file: UploadFile = File(...)):
     #    status_code=status.HTTP_200_OK,
     #    media_type='image/jpeg'
     #)
+
+import librosa
+from moviepy.editor import VideoClip, AudioClip, VideoFileClip, AudioFileClip
+import numpy as np
+
+
+# clip = AudioFileClip(r"deepfaked\two_face.mp3")
+# y, sr = librosa.load(r"deepfaked\two_face.mp3")
+# ms = librosa.feature.rms(y=y)
+# average_rms = np.mean(ms)
+# print(f"Average RMS volume: {average_rms}")
+
+# print(clip.max_volume())
+import audioread
+
+supported_formats = audioread.available_formats()
+print("Supported audio formats:", supported_formats)
