@@ -70,23 +70,28 @@ async def extract_audio(file_content, required: dict):
      return rgb_image
 
 
-def extract_frames_from_video(video_bytes):
-    """
-    Extracts frames from a video file that is in Bytes form without saving the video file using moviepy.
 
-    Args:
-        video_bytes (bytes): The video file in Bytes form.
 
-    Returns:
-        list: A list of PIL Image objects representing the frames of the video.
-    """
-    video_clip = VideoFileClip(BytesIO(video_bytes))
-    frames = []
-    for frame in video_clip.iter_frames():
-        frame = Image.fromarray(frame)
-        frames.append(frame)
-    return frames
+class VideoFrame:
+    def __init__(self, frame, frame_id, time, size):
+        self.frame = frame
+        self.frame_id = frame_id
+        self.time = time
+        self.size = size
 
+    def assign_frame_id(self, frame_id):
+        self.frame_id = frame_id
+
+
+
+def video_processing(file_content, data):
+    clip: VideoFileClip
+    # return the temp file using the extension
+    cli = makeTempFile(file_content=file_content, suffixg=data["filename"])
+    # loading the video in the memory in RAM without using harddrive, saving in the harddrive will come later
+    
+    clip = VideoFileClip(cli)
+    pass
 
 
 
