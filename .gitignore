@@ -26,3 +26,4 @@ prototype/Models/xception.pth
 prototype/__pycache__/cw_layer.cpython-311.pyc
 prototype/__pycache__/iterative_normalization.cpython-311.pyc
 prototype/__pycache__/main.cpython-311.pyc
+venv/*
