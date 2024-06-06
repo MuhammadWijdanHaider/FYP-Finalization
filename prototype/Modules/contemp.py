@@ -2,9 +2,25 @@ from tempfile import NamedTemporaryFile
 from mtcnn import MTCNN
 from PIL import Image
 import torchvision.transforms as transforms
+import torch
+from fastapi import HTTPException
+from torchray.attribution.grad_cam import grad_cam
+import cv2
+import numpy as np
+from io import BytesIO
+import base64
+
 
 MINIMUM_CONFIDENCE = 0.95
-
+model_path = r"Models\bce_final_model_epoch3.pth"
+model_path_audio = r"Models\audio_model_epoch5.pth"
+model_inter_path = r"Models\xception.pth"
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model_audio = torch.load(model_path_audio, map_location=device)
+model = torch.load(model_path, map_location=device)
+model_inter = torch.load(model_path, map_location=device)
+model.eval()
+model_audio.eval()
 detector = MTCNN()
 
 
@@ -37,6 +53,7 @@ async def cropping(data, input_image):
 
 
 async def preprocessing_f(file_content):
+    # this is for transforming the image into tensor, will work on audio mel spectrograms
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Resize((224, 224)),
@@ -45,3 +62,46 @@ async def preprocessing_f(file_content):
     img = transform(file_content)
     img = img.unsqueeze(0)
     return img
+
+
+async def make_predictions(img, types):
+    prediction: int
+    if types == "audio":
+        with torch.no_grad():
+            output = model_audio(pixel_values=img)
+        logits = output.logits
+        prediction = torch.argmax(logits).item()
+    elif types == "image":
+        with torch.no_grad():
+            outputs = model(img)
+            logits = outputs.logits if hasattr(outputs, 'logits') else outputs
+        probabilities = torch.sigmoid(logits)
+        prediction = (probabilities > 0.5).float().cpu().numpy()
+    else:
+        raise HTTPException(status_code=500, detail="Internal Error")
+    return prediction
+
+
+async def ndarray_embed(nda: np.ndarray) -> BytesIO:
+    image = Image.fromarray(nda.astype('uint8'), 'RGB')
+    img_io = BytesIO()
+    image.save(img_io, format='jpeg')
+    img_io.seek(0)
+    encoded_image = base64.b64encode(img_io.getvalue()).decode('utf-8')
+    return encoded_image
+
+
+
+async def interpretability(cropped_image, final_tensor, predicted_class):
+    grad_cam_result = grad_cam(model_inter, final_tensor, saliency_layer='model.block12.rep.4.conv1', target=predicted_class)
+    grad_cam_heatmap = grad_cam_result[0].detach().numpy().sum(axis=0)
+    resized_heatmap = cv2.resize(grad_cam_heatmap, (224, 224))
+    # change this if error occurs
+    nd = np.array(cropped_image, dtype=np.uint8)
+    input_image = cv2.cvtColor(nd, cv2.COLOR_RGBA2RGB)
+    input_image = cv2.resize(input_image, (224, 224))
+    resized_heatmap = (resized_heatmap - resized_heatmap.min()) / (resized_heatmap.max() - resized_heatmap.min() + 1e-8)
+    heatmap_rgb = cv2.applyColorMap(np.uint8(255 * resized_heatmap), cv2.COLORMAP_JET)
+    overlayed_image = cv2.addWeighted(input_image, 0.5, heatmap_rgb, 0.5, 0)
+    p = cv2.cvtColor(overlayed_image, cv2.COLOR_BGR2RGB)
+    return p
