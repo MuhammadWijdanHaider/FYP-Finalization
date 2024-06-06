@@ -12,13 +12,13 @@ import base64
 
 
 MINIMUM_CONFIDENCE = 0.95
-model_path = r"Models\bce_final_model_epoch3.pth"
+model_path = r"Models\final_model_epoch2.pth"
 model_path_audio = r"Models\audio_model_epoch5.pth"
 model_inter_path = r"Models\xception.pth"
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model_audio = torch.load(model_path_audio, map_location=device)
 model = torch.load(model_path, map_location=device)
-model_inter = torch.load(model_path, map_location=device)
+model_inter = torch.load(model_inter_path, map_location=device)
 model.eval()
 model_audio.eval()
 detector = MTCNN()
@@ -72,6 +72,10 @@ async def make_predictions(img, types):
         logits = output.logits
         prediction = torch.argmax(logits).item()
     elif types == "image":
+        # with torch.no_grad():
+        #     outputs = model(img)
+        # logits = outputs.logits
+        # prediction = torch.argmax(logits).item()
         with torch.no_grad():
             outputs = model(img)
             logits = outputs.logits if hasattr(outputs, 'logits') else outputs
@@ -89,7 +93,6 @@ async def ndarray_embed(nda: np.ndarray) -> BytesIO:
     img_io.seek(0)
     encoded_image = base64.b64encode(img_io.getvalue()).decode('utf-8')
     return encoded_image
-
 
 
 async def interpretability(cropped_image, final_tensor, predicted_class):
