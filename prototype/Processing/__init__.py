@@ -3,6 +3,7 @@ from mtcnn import MTCNN
 
 
 MINIMUM_CONFIDENCE = 0.95
+MAXIMUM_LENGHT = 10
 AUDIO_DIM = (175, 175)
 model_path = r"Models\bce_final_model_epoch3.pth"
 model_path_audio = r"Models\audio_model_epoch5.pth"

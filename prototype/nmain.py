@@ -4,7 +4,7 @@ import transformers
 # from Modules import videoprocessing, imageprocessing, contemp
 from fastapi import FastAPI, HTTPException, Form, File, UploadFile
 import json
-from Processing import imageprocessing, contemp, audioprocessing
+from Processing import imageprocessing, contemp, audioprocessing, videoprocessing
 
 ALLOWED_EXTENSIONS = ["mp3", "flac", "wav", "mp4", "mov", "mkv", "jpg", "jpeg", "png"]
 AUDIO_EXTENSIONS = ["mp3", "flac", "wav"]
@@ -22,16 +22,7 @@ async def main(file: UploadFile = File(...), json_data: str = Form("{}")):
     extension = "." in filename and filename.rsplit(".", 1)[1].lower()
     data["ext"] = extension
     if extension in VIDEO_EXTENSIONS:
-        pass
-        # result = videoprocessing.video_processing(file_content, data)
-        # t_result = type(result)
-        # if t_result == list:
-        #     return {"result": result}
-        # else:
-        #     raise HTTPException(
-        #         status_code=422, detail="Unsupported File has been uploaded"
-        #     )
-        # pass
+        p = await videoprocessing.video_processing(file_content, data)
 
     elif extension in IMAGE_EXTENSIONS:
         result: dict = await imageprocessing.complete_preprocessing(file_content)

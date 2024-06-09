@@ -25,6 +25,7 @@ async def detect_faces(frame):
 
 
 async def cropping(data, input_image):
+    """Provide the face data as well as the original image"""
     face_data = data
     t_faces = []
     for face in face_data:
